@@ -1,0 +1,25 @@
+FROM apache/beam_python3.11_sdk:2.49.0
+
+# Install Java SDK and jar files for the Beam expansion service
+COPY --from=apache/beam_java11_sdk:2.49.0 /opt/apache/beam/ /opt/apache/beam_java
+COPY --from=apache/beam_java11_sdk:2.49.0 /opt/apache/beam/jars/ /opt/apache/beam/jars/
+
+# Install Java
+RUN set -ex \
+  && apt-get update \
+  && apt-get -y install \
+       gettext-base \
+       openjdk-11-jre-headless \
+       openjdk-11-jdk-headless \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY /jars /jars
+
+# Install pipeline dependencies.
+COPY /pipelines /pipelines
+WORKDIR /pipelines
+RUN pip3 install -r requirements.txt
+
+COPY job-upload.py /
+
+ENTRYPOINT ["python", "/job-upload.py"]

@@ -1,0 +1,35 @@
+FROM apache/beam_python3.11_sdk:2.49.0
+
+# Install Java SDK and jar files for the Beam expansion service
+COPY --from=apache/beam_java11_sdk:2.49.0 /opt/apache/beam/ /opt/apache/beam_java
+COPY --from=apache/beam_java11_sdk:2.49.0 /opt/apache/beam/jars/ /opt/apache/beam/jars/
+
+# Install Java
+RUN set -ex \
+  && apt-get update \
+  && apt-get -y install \
+       gettext-base \
+       openjdk-11-jre-headless \
+       openjdk-11-jdk-headless \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install Flink
+ENV FLINK_HOME=/opt/flink
+ENV PATH=$PATH:$FLINK_HOME/bin
+COPY --from=flink:1.16 $FLINK_HOME $FLINK_HOME
+
+# This jar file will allow us to submit our Python jobs to the Flink cluster
+#https://repository.apache.org/content/groups/public/org/apache/beam/beam-runners-flink-1.16-job-server/2.49.0/beam-runners-flink-1.16-job-server-2.49.0.jar
+COPY /jars/beam-runners-flink-1.16-job-server-2.49.0.jar /opt/flink/flink-web-upload/beam-runner.jar
+RUN echo 'jobmanager.web.upload.dir: /opt/flink' >> $FLINK_HOME/conf/flink-conf.yaml
+
+COPY docker-entrypoint.sh /
+
+# Install pipeline dependencies. Used when running in Application mode
+COPY /pipelines /pipelines
+WORKDIR /pipelines
+# RUN pip3 install -r requirements.txt
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
+EXPOSE 6123 8081
+CMD ["local"]

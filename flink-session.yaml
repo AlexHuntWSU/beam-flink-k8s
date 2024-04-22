@@ -1,0 +1,89 @@
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: flink-session # TODO: Fix issue when naming to 'flink'
+  namespace: default
+spec:
+  image: beam
+  flinkVersion: v1_16
+  restartNonce: 1
+  flinkConfiguration:
+    taskmanager.numberOfTaskSlots: "2"
+    web.cancel.enable: "True"
+    rest.await-leader-timeout: "90000"
+    state.savepoints.dir: file:///flink-data/savepoints
+    state.checkpoints.dir: file:///flink-data/checkpoints
+    high-availability: org.apache.flink.kubernetes.highavailability.KubernetesHaServicesFactory
+    high-availability.storageDir: file:///flink-data/ha
+    kubernetes.operator.job.restart.failed: "True"
+    kubernetes.operator.job.savepoint-on-deletion: "True"
+    # metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+    # metrics.reporter.prom.port: 9249-9250
+  serviceAccount: flink 
+  podTemplate:
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: pod-template
+    spec:
+      containers:
+        - name: flink-main-container
+          volumeMounts:
+            - mountPath: /tmp/beam-artifact-staging
+              name: artifact-staging          
+            - mountPath: /flink-data
+              name: flink-volume                            
+      volumes:
+        - name: flink-volume
+          hostPath:
+            path: /run/desktop/mnt/host/c/flink  
+        - name: artifact-staging
+          hostPath:
+            path: /run/desktop/mnt/host/c/flink/tmp
+  jobManager:
+    resource:
+      memory: "1024m"
+      cpu: 1
+  taskManager:
+    resource:
+      memory: "2048m"
+      cpu: 2
+  logConfiguration:
+    "log4j-console.properties": |
+      rootLogger.level = DEBUG
+      rootLogger.appenderRef.file.ref = LogFile
+      rootLogger.appenderRef.console.ref = LogConsole
+      appender.file.name = LogFile
+      appender.file.type = File
+      appender.file.append = false
+      appender.file.fileName = ${sys:log.file}
+      appender.file.layout.type = PatternLayout
+      appender.file.layout.pattern = %d{yyyy-MM-dd HH:mm:ss,SSS} %-5p %-60c %x - %m%n
+      appender.console.name = LogConsole
+      appender.console.type = CONSOLE
+      appender.console.layout.type = PatternLayout
+      appender.console.layout.pattern = %d{yyyy-MM-dd HH:mm:ss,SSS} %-5p %-60c %x - %m%n
+      logger.akka.name = akka
+      logger.akka.level = INFO
+      logger.kafka.name= org.apache.kafka
+      logger.kafka.level = INFO
+      logger.hadoop.name = org.apache.hadoop
+      logger.hadoop.level = INFO
+      logger.zookeeper.name = org.apache.zookeeper
+      logger.zookeeper.level = INFO
+      logger.netty.name = org.apache.flink.shaded.akka.org.jboss.netty.channel.DefaultChannelPipeline
+      logger.netty.level = OFF
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flink-external
+spec:
+  selector:
+    app: flink
+  ports:
+    - protocol: TCP
+      port: 8081
+      nodePort: 30032
+  type: NodePort

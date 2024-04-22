@@ -1,0 +1,12 @@
+[
+    {
+        "name": "t1",
+        "command": "python /pipelines/kafka-demo/main.py --job_name=t1 --runner=PortableRunner --job_endpoint=localhost:8099 --checkpointing_interval=900000 --parallelism=2 --requirements_file=requirements.txt",
+        "operation": "STOP"
+    },
+    {
+        "name": "t2",
+        "command": "python /pipelines/kafka-demo/main.py --job_name=t2 --runner=PortableRunner --job_endpoint=localhost:8099 --checkpointing_interval=900000 --parallelism=2 --requirements_file=requirements.txt",
+        "operation": "SAVEPOINT"
+    }
+]

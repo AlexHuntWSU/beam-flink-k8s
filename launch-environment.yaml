@@ -1,0 +1,27 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: beam-job-service
+spec:
+  ttlSecondsAfterFinished: 60
+  template:
+    spec:
+      containers:
+        - name: job-service
+          image: job-service
+          imagePullPolicy: Never
+          volumeMounts:
+            - mountPath: /tmp/beam-artifact-staging
+              name: artifact-staging           
+            - mountPath: /config
+              name: config               
+      volumes:
+        - name: artifact-staging
+          hostPath:
+            path: /run/desktop/mnt/host/c/flink/tmp
+        - name: config
+          configMap:
+            name: config
+      restartPolicy: Never
+
+# kubectl create configmap config --from-file pipeline-submission.json -o yaml --dry-run=client | kubectl apply -f -

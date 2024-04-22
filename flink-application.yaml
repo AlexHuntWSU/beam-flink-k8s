@@ -1,0 +1,80 @@
+
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: flink
+  namespace: default
+spec:
+  restartNonce: 2
+  image: beam
+  flinkVersion: v1_16
+  flinkConfiguration:
+    taskmanager.numberOfTaskSlots: "2"
+    web.cancel.enable: "True"
+    rest.await-leader-timeout: "90000"
+    state.savepoints.dir: file:///flink-data/savepoints
+    state.checkpoints.dir: file:///flink-data/checkpoints
+    high-availability: org.apache.flink.kubernetes.highavailability.KubernetesHaServicesFactory
+    high-availability.storageDir: file:///flink-data/ha
+    kubernetes.operator.periodic.checkpoint.interval: 10m
+    kubernetes.operator.job.savepoint-on-deletion: "True"
+  serviceAccount: flink 
+  podTemplate:
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: pod-template
+    spec:
+      containers:
+        - name: flink-main-container
+          volumeMounts:
+            - mountPath: /tmp/beam-artifact-staging
+              name: flink-volume
+            - mountPath: /flink-data
+              name: flink-volume
+      volumes:
+        - name: flink-volume
+          hostPath:
+            path: /run/desktop/mnt/host/c/flink  
+  jobManager:
+    resource:
+      memory: "2048m"
+      cpu: 1
+  taskManager:
+    resource:
+      memory: "2048m"
+      cpu: 2
+  job:
+    jarURI: local:///opt/flink/flink-web-upload/beam-runner.jar
+    entryClass: "org.apache.beam.runners.flink.FlinkPortableClientEntryPoint"
+    args: [--driver-cmd, cd /pipelines/kafka-demo; exec python -m main --job_name=beam-kafka-demo --runner=PortableRunner]
+    parallelism: 2
+    upgradeMode: last-state
+    state: running
+    initialSavepointPath: file:///flink-data/savepoints/savepoint-7f227b-fa70779f9e20
+    savepointTriggerNonce: 1
+  logConfiguration:
+    "log4j-console.properties": |
+      rootLogger.level = DEBUG
+      rootLogger.appenderRef.file.ref = LogFile
+      rootLogger.appenderRef.console.ref = LogConsole
+      appender.file.name = LogFile
+      appender.file.type = File
+      appender.file.append = false
+      appender.file.fileName = ${sys:log.file}
+      appender.file.layout.type = PatternLayout
+      appender.file.layout.pattern = %d{yyyy-MM-dd HH:mm:ss,SSS} %-5p %-60c %x - %m%n
+      appender.console.name = LogConsole
+      appender.console.type = CONSOLE
+      appender.console.layout.type = PatternLayout
+      appender.console.layout.pattern = %d{yyyy-MM-dd HH:mm:ss,SSS} %-5p %-60c %x - %m%n
+      logger.akka.name = akka
+      logger.akka.level = INFO
+      logger.kafka.name= org.apache.kafka
+      logger.kafka.level = INFO
+      logger.hadoop.name = org.apache.hadoop
+      logger.hadoop.level = INFO
+      logger.zookeeper.name = org.apache.zookeeper
+      logger.zookeeper.level = INFO
+      logger.netty.name = org.apache.flink.shaded.akka.org.jboss.netty.channel.DefaultChannelPipeline
+      logger.netty.level = OFF
