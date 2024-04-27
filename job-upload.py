@@ -1,15 +1,160 @@
+import os
 import sys
 import json
 import time
-import typing
 import socket
 import logging
 import requests
-import subprocess
+from requests.adapters import HTTPAdapter
+from requests.exceptions import RetryError
+from enum import Enum
+import subprocess as ps
 
-FLINK_CLUSTER = 'flink-session-rest:8081'
-SAVEPOINTS_DIR = '/flink-data/savepoints'
-JAR_PATH = '/jars/beam-runners-flink-1.16-job-server-2.49.0.jar'
+from typing import (
+    Optional,
+    Type 
+)
+
+FLINK_CLUSTER = os.environ.get('FLINK_CLUSTER', 'localhost:8081')
+SAVEPOINTS_DIR = os.environ['SAVEPOINTS_DIR']
+JAR_PATH = os.environ['JAR_PATH']
+
+class ExtendedEnum(Enum):
+    @classmethod
+    def list(cls):
+        return list(map(lambda c: c.value, cls))
+
+class Status(Enum):
+    RUNNING = 0
+    PENDING = 1
+    FAILED = 2
+
+class Operation(ExtendedEnum):
+    CREATE = 0
+    STATEFUL_UPGRADE = 1
+    STATELESS_UPGRADE = 2
+    STOP = 3
+    SAVEPOINT = 4
+    SKIP = 5
+
+class RequestType(ExtendedEnum):
+    GET = "GET"
+    POST = "POST"
+
+class JobStatus(Enum):
+    pass
+
+class Job:
+    pass
+
+class BeamPythonJob(Job):
+    pass
+
+class BeamJobServer:
+    def __init__(self, path: str, cluster: str) -> None:
+        self.path = path
+        self.cluster = cluster
+        self.job_server = None
+    
+    def __enter__(self):
+        self.job_server = self.start_job_server()
+
+    def __exit__(self, type, value, traceback):
+        self._stop_job_server()
+
+    def start_job_server(self) -> ps.Popen:
+        #TODO Improve this to allow for additional arguments
+        job_server = f"java -jar {self.path} --flink-master={self.cluster}"
+        return ps.Popen(job_server, shell=True, stdout=sys.stdout, stderr=ps.PIPE)
+
+    def stop_job_server(self) -> None:
+        self.job_server.terminate()
+
+    def _get_job_server_status(self) -> Status:
+        """Determines if the job server has started by checking if the port
+        has been allocated.
+        """
+        if self.job_server.returncode != 0:
+            return Status.FAILED
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            #TODO parametrize job server port
+            if s.connect_ex(('localhost', 8099)) == 0:
+                return Status.RUNNING
+            else:
+                return Status.PENDING
+            
+    def wait_for_job_server(self, timeout: int, interval: int=10) -> Status:
+        start = time.time()
+        while True:
+            job_server_status = self._get_job_server_status()
+            if job_server_status != Status.PENDING:
+                return job_server_status
+            elif time.time() - start >= timeout:
+                return Status.PENDING
+            else:
+                time.sleep(interval)
+
+class FlinkAPI:
+    def __init__(self, cluster: str) -> None:
+        self.root = f'http://{cluster}/v1'
+
+    def _call_api(self, 
+                  endpoint: str, 
+                  request: RequestType,
+                  data: dict,
+                  timeout: int=30, 
+                  retries: int=0) -> dict:
+        session = requests.Session()
+        adapter = HTTPAdapter(max_retries=retries)
+        session.mount(self.root, adapter)
+
+        try:
+            if request == RequestType.GET:
+                response = session.get(f"{self.root}{endpoint}", timeout=timeout)
+            elif request == RequestType.POST:
+                response = session.post(f"{self.root}{endpoint}", json=data, timeout=timeout)
+            else:
+                raise Exception(f"Request type not in {','.join(RequestType.list())}")
+            return response.json()
+        except RetryError as err:
+            print(f"Flink REST error: {err}")
+        finally:
+            session.close()
+
+    def get_job_id(self, job_name: str) -> list:
+        """Gets the Flink job ids with a matching job name"""
+        endpoint = '/jobs/overview'
+        response = self._call_api(endpoint=endpoint, request=RequestType.GET, retries=3)
+        matching_jobs = [job for job in response['jobs'] if job['name'] == job_name]
+        return matching_jobs
+
+    def cancel_job(self, job_id: str, drain: bool) -> None:
+        pass
+
+    def create_savepoint(self, job_id: str, savepoints_dir: str) -> str:
+        """Initiates a savepoint"""
+        endpoint = f'/jobs/{job_id}/savepoints'
+        data = {"cancel-job": False, 
+                "formatType": "NATIVE", 
+                "target-directory": savepoints_dir}
+        response = self._call_api(endpoint=endpoint, 
+                                  request=RequestType.POST, 
+                                  data=data, 
+                                  retries=3)
+        return response['request-id']
+
+    def check_savepoint_status(self, job_id: str, savepoint_id: str) -> Optional[dict]:
+        """Checks the status of a savepoint request"""
+        endpoint = f'/jobs/{job_id}/savepoints/{savepoint_id}'
+        return self._call_api(endpoint=endpoint, request=RequestType.GET, retries=3)
+
+
+    
+
+class Savepoint:
+    def __init__(self, job_id: str) -> None:
+        pass
+
 
 def run_job_server(jar_path: str, flink_cluster: str) -> typing.Type[subprocess.Popen]:
     """Starts up a job server using a local jar file. By default, the job service

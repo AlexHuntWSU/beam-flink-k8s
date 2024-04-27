@@ -14,7 +14,14 @@ spec:
             - mountPath: /tmp/beam-artifact-staging
               name: artifact-staging           
             - mountPath: /config
-              name: config               
+              name: config          
+          env:
+            - name: FLINK_CLUSTER
+              value: "flink-session-rest:8081"
+            - name: SAVEPOINTS_DIR
+              value: "/flink-data/savepoints"
+            - name: JAR_PATH
+              value: "/jars/beam-runners-flink-1.16-job-server-2.49.0.jar"
       volumes:
         - name: artifact-staging
           hostPath:
