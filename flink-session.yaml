@@ -4,7 +4,7 @@ metadata:
   name: flink-session # TODO: Fix issue when naming to 'flink'
   namespace: default
 spec:
-  image: beam
+  image: core.harbor.domain/flink/beam:latest
   flinkVersion: v1_16
   restartNonce: 1
   flinkConfiguration:

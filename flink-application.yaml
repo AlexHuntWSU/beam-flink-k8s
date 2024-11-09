@@ -6,7 +6,7 @@ metadata:
   namespace: default
 spec:
   restartNonce: 2
-  image: beam
+  image: core.harbor.domain/flink/beam:latest
   flinkVersion: v1_16
   flinkConfiguration:
     taskmanager.numberOfTaskSlots: "2"
